@@ -1,0 +1,172 @@
+---
+title: "Practical Machine Learning - Course Project"
+author: "Shwetank Dwivedi"
+date: "7/6/2020"
+output: html_document
+---
+
+### Motto : 
+
+A group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, were asked to perform barbell lifts correctly and incorrectly in 5 different ways.The goal of this project is to predict the manner in which they did the exercise by using data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. . This is the "classe" variable in the training set. We will create a report describing how we built our model.We will also use our prediction model to predict 20 different test cases.
+
+### Dataset :
+The training data for this project are available here:
+[link](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv)
+The test data are available here:
+[link](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv)
+The data for this project come from this source: [link](http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har.)
+
+#### I would like to pay my sincere gratitude towards the authors of the above DataSet for their generosity in allowing the data to be analysed for the purpose of this project.
+
+#### 1) libraries used :
+
+```{r warning = FALSE , message = FALSE}
+
+library(caret)
+library (rpart)
+library(randomForest)
+library (rpart.plot)
+library (corrplot)
+library(knitr)
+library(rattle)
+
+```
+
+#### 2) Downloading the Data from the URL
+
+```{r warning = FALSE}
+
+training = read.csv( url ('https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv') , na.strings = c ("NA","") )
+
+testing = read.csv( url ('https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv'), na.strings = c ("NA","") )
+
+```
+
+#### 3) Partitioning the training data into 70% training and 30% testing
+
+```{r warning = FALSE}
+
+set.seed (3434)
+
+inTrain  = createDataPartition (training$classe , p =0.7 , list = FALSE)
+
+TrainSet = training [inTrain ,]
+
+TestSet  = training [ -inTrain ,]
+
+dim(TrainSet)
+
+dim(TestSet)
+
+```
+
+#### 4) Data Cleaning
+
+```{r warning = FALSE}
+
+NZV = nearZeroVar(TrainSet)
+
+TrainSet = TrainSet[, -NZV]
+
+TestSet  = TestSet[, -NZV]
+
+NAElements = sapply( TrainSet , function(x) mean(is.na(x))  ) > 0.95
+
+TrainSet = TrainSet [, NAElements == FALSE]
+
+TestSet  = TestSet  [, NAElements == FALSE]
+
+dim(TrainSet)
+
+dim(TestSet)
+
+```
+
+The first five variables do not help in out target prediction as they are merely observation identifiers.
+   
+
+```{r warning = FALSE}
+
+head(TrainSet)
+
+```
+
+So we can remove them from our training and testing dataset and be left with 54 variables.
+
+```{r warning = FALSE}
+
+TrainSet = TrainSet [ , - (1:5)]
+
+TestSet = TestSet [ , - (1:5)]
+
+dim(TrainSet)
+
+dim(TestSet)
+
+```
+
+#### 5) Preprocessing Analysis
+
+Now we can see if our predictors are highly corelated ( after removing classe variable) so that some of them could be clubbed using PCA and that would help us decrease the no. of total predictors.
+
+```{r warning = FALSE}
+coranalysis = cor (TrainSet [,-54])
+
+corrplot(coranalysis , order = "alphabet", method = "square", type = "upper",title = "Corelation between Variables" , bg = "white", tl.cex = 0.5 , tl.col = rgb (0,0,1))
+
+```
+The dark blue color blocks in the triangular area of the above graph denote high corelation  which are very few and far between so there isn't much corelation among predictors so as to apply PCA on them.
+
+#### 6) Model Building
+
+Now we can build two models -- 1) Random Forest 2) Decision Trees on the train dataset and the model with best accuracy acquired through Confusion Matrix will be applied to the test dataset.
+
+>  (i) Random Forest
+
+For Sampling , I have used k-fold cross-validation with 5 folds to estimate the prediction error rate it balances the bias-variance trade off very well given the data we have.
+
+```{r warning = FALSE}
+set.seed(4459)
+trcontrolCV = trainControl( method = "cv", number = 5, verboseIter=FALSE )
+modFitRF = train (classe ~., data = TrainSet, method = "rf", trControl = trcontrolCV )
+modFitRF$finalModel
+```
+Accuracy for RandomForest Model is 99.69 % which is Excellent.
+
+```{r warning = FALSE}
+predictRF = predict(modFitRF , TestSet )
+TestSet$classe = as.factor(TestSet$classe)
+confMatRF = confusionMatrix(predictRF , TestSet$classe )
+confMatRF
+```
+
+>  (ii) Decision Trees 
+
+This method is backed by repeated k-fold CV with k = 4 which is repeated 5 times. Performancewise it takes more time than normal k -fold CV , but I have implemented it  to challange the excellent accuracy resulting from RandomForest method.
+
+```{r warning = FALSE}
+set.seed(6324)
+modFitrpart <- train(classe ~ .,method = "rpart", data = TrainSet,tuneLength = 50, 
+                      metric = "Accuracy",
+                      trControl = trainControl(method = "repeatedcv",
+                                               number = 4,
+                                               repeats = 5,
+                                               summaryFunction = multiClassSummary,
+                                               classProbs = TRUE))
+predictrpart = predict (modFitrpart  ,TestSet)
+confMatrpart = confusionMatrix(predictrpart  , TestSet$classe)
+confMatrpart
+```
+The Accuracy is  : 90.03% , which is very good but still does not beat the accuracy of RandomForest Method.
+
+#### 6) Model Selection and Appying the selected Model on Testing data
+
+##### RandomForest method is chosen as it has 99.69% accuracy on the training data.
+
+```{r warning = FALSE}
+
+predTesting = predict (modFitRF , testing)
+
+predTesting
+
+```
